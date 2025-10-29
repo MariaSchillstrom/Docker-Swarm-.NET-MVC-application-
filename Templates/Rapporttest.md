@@ -8,11 +8,67 @@
 
 # DockerSwarm 
 
+## 1. Skapa resurser 
+
 Jag började med att skapa nedan resurser manuellt, för att sedan skapa en cloud formation template via Iac generator för automatisering. 
 
-- *(1)Security group
-- Swarm Cluster (EC2) med 
-- ASG
+- Security group (*1)
+- EC2 till swarm-kluster. Skapade 1 manuellt, modifierade skriptet till 3.
+  Skripten ligger i sin helhet under Templates.
+
+  Skripten körs sedan i terminal med ....
+
+  Gå in på AWS och se om de skapats eller kör .... i terminalen 
+
+  ## 2. Initiera Docker Swarm via SSH
+
+  Se till att Docker är öppen.
+
+  
+  I terminalen kör ; 
+
+ ```
+aws cloudformation describe-stacks --stack-name swarm-ec2 --query 'Stacks[0].Outputs[*].[OutputKey,OutputValue]' --output table
+```
+
+Detta genererar en lista på alla privata samt publika ip adresser för dina EC2, samt sökvägen för din .pem keyfile. Spara ner dem vid sidan av,i tillexempel notepad++.
+
+Skapa 3 st ; ssh -i ~/.ssh/your-key.pem ec2-user@<manager-public-ip> 
+
+Ersätt your-key.pem med din sökväg, samt public ip för manager, worker 1 samt worker 2.
+
+
+## 2.1 Connect to Manager Node
+
+För att ansluta till manager Node kör;
+
+```
+ssh -i Keyswarm1029.pem ec2-user@54.154.62.190
+```
+Resultatet ska bli; 
+
+
+https://i.imgur.com/JbMyfV5.png
+
+
+
+## 2.2 Initisera Swarm på Manager
+
+Använd den privata ip- adressen för manager
+
+```
+sudo docker swarm init --advertise-addr 172.31.1.34
+
+```
+Då kommer du att få en lång token om allt går vägen, kopiera denna 
+
+https://i.imgur.com/Tg1Uipv.png
+
+
+## 2.3 
+
+
+
 
 
 
@@ -48,22 +104,21 @@ Jag började med att skapa nedan resurser manuellt, för att sedan skapa en clou
 
 Som jag nämnde tidigare så har jag använt mig av Cloud formation för att skapa vissa av resurserna. Nedan följer ett exempel på hur man använder Iac generator. Principen är densamma från dess att resursen man vill "använda" till templaten är klar. 
 
-## Börja med att skapa en Security Group manuellt. 
+## Börja med att skapa en Security Group manuellt
 
-### Security Group
+### 1. Skapa Security Group i två steg
 
-## 1. Skapa en securitygroup i två steg 
-
-Steg 1-
 
 Namnge SG samt ange beskrivning
 
 #### Inbound rules https://i.imgur.com/bi27vCg.png
 
-VPC Default
-SSH: Port 22, rekommenderas att använda Your IP address 
-HTTP: Port 80, Source 0.0.0.0/0
-Custom TCP (Visualizer): Port 8080, Source 0.0.0.0/0
+#### Inbound rules
+
+- **VPC**: Default
+- **SSH**: Port 22 (rekommenderas att använda Your IP address)
+- **HTTP**: Port 80, Source: 0.0.0.0/0
+- **Custom TCP (Visualizer)**: Port 8080, Source: 0.0.0.0/0
 
 #### Outbound rules
 
@@ -141,8 +196,7 @@ Välj att spara ner skriptet , så kan du använda det flera gånger som det är
 
 https://i.imgur.com/bi27vCg.png
 
-OBS! Se till att delete stacken under Cloud formation, samt SG innan du kör skriptet, eller uppdatera templaten med andra namn. 
-
+OBS! Se till att radera stacken under CloudFormation samt SG innan du kör skriptet, eller uppdatera templaten med andra namn.
 
 
 
