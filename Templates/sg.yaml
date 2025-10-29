@@ -59,6 +59,13 @@ Parameters:
     Default: 22
     MinValue: 1
     MaxValue: 65535
+  
+  VisualizerPort:
+    Type: Number
+    Description: Port för Docker Visualizer
+    Default: 8080
+    MinValue: 1
+    MaxValue: 65535
 
 Metadata:
   AWSToolsMetrics:
@@ -87,6 +94,13 @@ Resources:
           FromPort: !Ref SSHPort
           ToPort: !Ref SSHPort
           CidrIp: !Ref SSHAllowedCIDR
+        
+        # Visualizer Access
+        - IpProtocol: tcp
+          Description: Docker Visualizer Access
+          FromPort: !Ref VisualizerPort
+          ToPort: !Ref VisualizerPort
+          CidrIp: !Ref HTTPAllowedCIDR
       
       SecurityGroupEgress:
         - IpProtocol: -1
