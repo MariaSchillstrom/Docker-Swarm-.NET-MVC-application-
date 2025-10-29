@@ -8,6 +8,11 @@
 
 # DockerSwarm 
 
+Jag började med att skapa nedan resurser manuellt, för att sedan skapa en cloud formation template via Iac generator för automatisering. 
+
+- *(1)Security group
+- Swarm Cluster (EC2) med 
+- ASG
 
 
 
@@ -36,6 +41,9 @@
 
 
 
+
+
+(*1)
 # Att använda Iac generator. 
 
 Som jag nämnde tidigare så har jag använt mig av Cloud formation för att skapa vissa av resurserna. Nedan följer ett exempel på hur man använder Iac generator. Principen är densamma från dess att resursen man vill "använda" till templaten är klar. 
@@ -50,7 +58,7 @@ Steg 1-
 
 Namnge SG samt ange beskrivning
 
-#### Inbound rules 
+#### Inbound rules https://i.imgur.com/bi27vCg.png
 
 VPC Default
 SSH: Port 22, rekommenderas att använda Your IP address 
@@ -59,7 +67,7 @@ Custom TCP (Visualizer): Port 8080, Source 0.0.0.0/0
 
 #### Outbound rules
 
-All traffic 
+All traffic https://i.imgur.com/bi27vCg.png
 Destination: Custom 
 
 * Lägg till tags om så önskas.
@@ -133,6 +141,7 @@ Välj att spara ner skriptet , så kan du använda det flera gånger som det är
 
 https://i.imgur.com/bi27vCg.png
 
+OBS! Se till att delete stacken under Cloud formation, samt SG innan du kör skriptet, eller uppdatera templaten med andra namn. 
 
 
 
