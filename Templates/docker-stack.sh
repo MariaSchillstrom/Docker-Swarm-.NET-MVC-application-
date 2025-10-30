@@ -6,7 +6,7 @@ cat > docker-stack.yml << 'EOF'
 version: "3.8"
 services:
   web:
-    image: nginx:stable-alpine
+    image: 542478884453.dkr.ecr.eu-west-1.amazonaws.com/ds-demo-web:v1    # ← NY: Din MVC-app från ECR
     deploy:
       replicas: 3
       restart_policy:

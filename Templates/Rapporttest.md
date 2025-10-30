@@ -155,15 +155,154 @@ Då ska du få upp denna vy
 https://i.imgur.com/w2OdD0M.png
 
 
+***Skala ner*** sudo docker service scale myapp_web=3
+
+https://i.imgur.com/xzAdBXx.png
+
+***Skala upp*** sudo docker service scale myapp_web=5
+
+https://i.imgur.com/xzAdBXx.png
+
+
+## 5. Skapa en .NET MVC app
+
+## 5.1 Skapa ett nytt MVC i samma folder du är i. 
+
+I terminalen;
+
+```
+mkdir -p app
+cd app
+dotnet new mvc -n DsDemoWeb -o DsDemoWeb
+cd DsDemoWeb
+dotnet new gitignore
+```
+https://i.imgur.com/vZzkIbJ.png
+
+
+Gå in i program, och kommentera bort // app.UseHttpsRedirection();
+
+## 5.2 Skapa en docker file
+
+I din app-mapp, skapa en ny fil som heter Docker,lägg in nedan i filen och spara.
+
+```
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+WORKDIR /src
+COPY *.csproj ./
+RUN dotnet restore
+COPY . .
+RUN dotnet publish -c Release -o /app/publish
+
+
+FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS production
+WORKDIR /app
+EXPOSE 80
+ENV ASPNETCORE_URLS=http://+:80
+COPY --from=build /app/publish .
+ENTRYPOINT ["dotnet", "DsDemoWeb.dll"]
+```
+
+## 5.3 Skapa ett ECR repository
+
+I terminalen kör;
+
+```
+AWS_REGION=eu-west-1
+REPO=ds-demo-web
+
+
+aws ecr describe-repositories --repository-names "$REPO" --region "$AWS_REGION" >/dev/null 2>&1 || \
+  aws ecr create-repository --repository-name "$REPO" --region "$AWS_REGION"
+
+
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+REPO_URI=${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${REPO}
+echo "Repo URI: $REPO_URI"
+```
+
+Logga in
+
+I terminalen kör;
+
+```
+AWS_REGION=eu-west-1
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+aws ecr get-login-password --region $AWS_REGION \
+  | docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+```
+
+https://i.imgur.com/OG7XWim.png
 
 
 
+## 6. Bygg och pusha en multi-arkitektur image med Buildx
+
+## 6.1 Multi-arkitektur build
+
+Enligt instruktionen skulle imagen byggas för både amd64 och arm64 arkitekturer. Dock stötte jag på ett känt problem med .NET 9 och QEMU-emulering för arm64 som resulterade i exit code 134 (InvalidCastException).
+
+Eftersom mina EC2-instanser (t3.micro) använder amd64-arkitektur, byggde jag endast för linux/amd64:
 
 
+```
+docker buildx build \
+  --platform linux/amd64 \
+  -t ${REPO_URI}:${IMAGE_TAG} \
+  --push \
+  .
+```
+
+Detta är tillräckligt för projektet då alla noder i Swarm-klustret kör på amd64-processorer.
+
+https://i.imgur.com/BxqAOqe.png
+
+Gå till ECR-Repositories-ds-demo-web
+
+https://i.imgur.com/XC9p1OK.png
+
+## 6.2 
+
+Uppdatera din .yml med image istället för nginx. 
+
+ssh:a in på din manager 
+
+```
+scp -i Keyswarm1029.pem templates/docker-stack.sh ec2-user@54.154.62.190:~/deploy-swarm.sh
+```
+```
+nano deploy-swarm.sh
+```
+
+Byt ut 
+
+```
+image: nginx:stable-alpine
+```
+
+till 
+
+```
+image: 542478884453.dkr.ecr.eu-west-1.amazonaws.com/ds-demo-web:v1
+```
+Ctrl+X, Y, Enter
+
+Gör även ändringen i din .sh fil 
 
 
+## 6.3 Deploya
 
+OBS! Jag kunde inte få det att fungera, för tydligen så hade jag inte IAM access som jag trodde så först fick jag gå till AWS och .......
 
+I terminalen, på din manager kör; 
+
+```
+./docker-stack.sh
+```
+Detta skapar;
+**Docker-stack.yml med min MVC-app**
+**Deploya till swarm**
+**Visa status för alla services**
 
 
 
