@@ -35,13 +35,39 @@ Parameters:
   SubnetId:
     Type: AWS::EC2::Subnet::Id
     Description: Subnet where instances will be launched
-    Default: subnet-058684dd8c601d55d
+    # You need to provide your subnet ID here
 
 Metadata:
   AWSToolsMetrics:
     IaC_Generator: "arn:aws:cloudformation:eu-west-1:542478884453:generatedTemplate/232a8b92-816c-42b9-bb62-3e90110dae5f"
 
 Resources:
+  # IAM ROLE FÖR ECR ACCESS
+  EC2ECRRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: EC2-ECR-Access
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+      Tags:
+        - Key: Name
+          Value: EC2-ECR-Access
+  
+  # INSTANCE PROFILE (krävs för att tilldela role till EC2)
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: EC2-ECR-Profile
+      Roles:
+        - !Ref EC2ECRRole
+
   # MANAGER NODE
   SwarmManager:
     Type: AWS::EC2::Instance
@@ -51,6 +77,7 @@ Resources:
       InstanceType: !Ref InstanceType
       ImageId: !Ref ImageId
       KeyName: !Ref KeyName
+      IamInstanceProfile: !Ref EC2InstanceProfile
       SecurityGroupIds:
         - !Ref SecurityGroupId
       SubnetId: !Ref SubnetId
@@ -90,6 +117,7 @@ Resources:
       InstanceType: !Ref InstanceType
       ImageId: !Ref ImageId
       KeyName: !Ref KeyName
+      IamInstanceProfile: !Ref EC2InstanceProfile
       SecurityGroupIds:
         - !Ref SecurityGroupId
       SubnetId: !Ref SubnetId
@@ -129,6 +157,7 @@ Resources:
       InstanceType: !Ref InstanceType
       ImageId: !Ref ImageId
       KeyName: !Ref KeyName
+      IamInstanceProfile: !Ref EC2InstanceProfile
       SecurityGroupIds:
         - !Ref SecurityGroupId
       SubnetId: !Ref SubnetId

@@ -1,215 +1,421 @@
-# Docker Swarm på AWS
+# Docker Swarm på AWS - Skalbar Containerbaserad Värdmiljö
 
-## 1. Skapa resurser
+## Inledning
 
-Jag började med att skapa nedan resurser manuellt, för att sedan skapa en CloudFormation template via IaC generator för automatisering.
+Detta projekt demonstrerar hur man sätter upp en skalbar värdmiljö för en containerbaserad webbapplikation med Docker Swarm på AWS. Lösningen använder Infrastructure as Code (IaC) för automatisering och reproducerbarhet.
 
-- Security Group (*1)
-- EC2-instanser till swarm-kluster (skapade 1 manuellt, modifierade skriptet till 3)
+---
 
-Skripten ligger i sin helhet under `templates/`.
+## Vad är Docker Swarm?
 
-### 1.1 Kör skripten i terminalen
+### En arbetsplats-liknelse
 
-**Security Group:**
+**Tänk dig ett företag:**
+
+**Manager (Chef/Koordinator):**
+- Tar emot beställningar från kunder (deploy-kommandon)
+- Delegerar uppgifter till arbetare
+- Håller koll på att allt fungerar
+- Ersätter arbetare som blir sjuka
+- **Bestämmer VAR varje uppgift ska utföras** - vilken worker som ska köra vilken container
+
+**Workers (Anställda):**
+- Utför det faktiska arbetet (kör containers)
+- Rapporterar status till managern
+- Kan ta över varandras uppgifter vid behov
+
+**Services (Projekt/Uppdrag):**
+- Uppgifter som ska utföras (t.ex. "kör webbservern")
+- Kan skalas upp/ner beroende på behov
+- Fördelas automatiskt mellan tillgängliga arbetare
+
+**Replicas (Kopior av samma uppgift):**
+- 3 anställda som gör samma jobb parallellt
+- Om en blir sjuk, tar de andra över
+- Kunder märker ingen skillnad
+
+**Placement Constraints (Arbetsfördelning, inte applicerat på denna uppgift)***
+- Manager kan ange specifika krav för var containers ska köras
+- Exempel: "Visualizer ska ENDAST köra på Manager-noden"
+- Exempel: "Databas ska INTE köra på samma nod som webbserver"
+
+**Load Balancing (Fördelning av arbetsbelastning):**
+- Inkommande förfrågningar fördelas jämnt
+- Ingen anställd blir överbelastad
+- Effektivt resursutnyttjande
+
+**Self-healing (Självläkning):**
+- Om en worker kraschar, startar managern automatiskt en ny
+- Om en container dör, startas en ny direkt
+- Ingen manuell intervention krävs
+
+### Varför Swarm för denna lösning?
+
+I mitt projekt använder jag Docker Swarm för att:
+- **Hög tillgänglighet:** Om en nod kraschar fortsätter de andra att köra appen
+- **Skalbarhet:** Enkelt att öka/minska antal replicas vid ändrad belastning
+- **Loadbalancing:** Trafik fördelas automatiskt mellan alla replicas
+- **Koordinering:** Manager bestämmer exakt vilken nod som kör varje container
+- **Enkel hantering:** Ett kommando deployer till alla noder samtidigt
+
+---
+
+## Översikt av lösningen
+
+### Arkitektur
+
+Jag har skapat en skalbar containerbaserad värdmiljö för en .NET MVC-webbapplikation med följande komponenter:
+
+**Infrastruktur:**
+- 3 EC2-instanser på AWS (1 Manager + 2 Workers)
+- Docker Swarm orchestrerar containers över alla noder
+- Security Group kontrollerar nätverkstrafik
+- IAM Role ger säker åtkomst till container registry
+
+**Applikation:**
+- .NET MVC-app containeriserad med Docker
+- Lagrad i privat ECR (Elastic Container Registry)
+- Deployad med 3 replicas för redundans
+- Visualizer för grafisk överblick av klustret (körs endast på Manager)
+
+### Hur det fungerar
+
+```
+Internet (användare)
+    ↓
+HTTP request → Manager eller Worker (port 80)
+    ↓
+Docker Swarm (loadbalancer)
+    ↓
+Manager bestämmer vilken replica som svarar
+    ↓
+Distribuerar till en av 3 MVC-replicas
+    ↓
+Container svarar med webbsida
+```
+
+**Flöde vid deployment:**
+1. Developer bygger Docker image lokalt
+2. Image pushas till ECR
+3. Deploy-skript körs på Manager
+4. Manager hämtar image från ECR
+5. Swarm distribuerar 3 replicas över noderna
+6. Manager bestämmer placement baserat på constraints
+7. Services exponeras via port 80
+
+**Fördelar med denna setup:**
+- **Resiliens:** Om en nod går ner fortsätter de andra
+- **Skalbarhet:** `docker service scale myapp_web=5` ökar till 5 replicas
+- **Loadbalancing:** Inbyggt i Swarm, ingen extern loadbalancer behövs
+- **Orchestrering:** Manager koordinerar var containers ska köras
+- **Rolling updates:** Uppdatera app utan downtime
+- **Enkel hantering:** Ett deploy-kommando uppdaterar hela klustret
+
+---
+
+## AWS-tjänster som används
+
+**EC2 (Elastic Compute Cloud)**
+- 3 t3.micro instanser för Swarm-klustret
+- Kör Docker Engine och applikations-containers
+
+**ECR (Elastic Container Registry)**
+- Privat registry för Docker images
+- Lagrar MVC-applikationens container image
+
+**VPC & Security Groups**
+- Nätverksisolering och brandväggsregler
+- Kontrollerar in-/utgående trafik
+
+**IAM (Identity and Access Management)**
+- Hanterar behörigheter för EC2 att hämta images från ECR
+
+**CloudFormation**
+- Infrastructure as Code för automatiserad resurs-skapande
+
+---
+
+## Komponenternas uppgift och syfte
+
+### Infrastrukturkomponenter
+
+**Security Group (SwarmSG)**
+- **Syfte:** Brandvägg som kontrollerar nätverkstrafik
+- **Uppgift:** Tillåter SSH, HTTP, Swarm-kommunikation mellan noder
+
+**EC2 Manager-nod**
+- **Syfte:** Koordinerar Swarm-klustret
+- **Uppgift:** Schemalägger containers, hanterar state, tar emot deploy-kommandon, bestämmer vilken worker som kör vilken container
+
+**EC2 Worker-noder (2st)**
+- **Syfte:** Kör applikations-containers
+- **Uppgift:** Exekverar containers enligt Manager's instruktioner
+
+**ECR Repository**
+- **Syfte:** Lagrar Docker images privat
+- **Uppgift:** Distribuerar MVC-app image till alla Swarm-noder
+
+**IAM Role (EC2-ECR-Access)**
+- **Syfte:** Säker åtkomst till ECR utan credentials
+- **Uppgift:** Ger EC2-instanser read-only access till ECR
+
+### Applikationskomponenter
+
+**MVC Web Service (3 replicas)**
+- **Syfte:** Webbapplikation tillgänglig via HTTP
+- **Uppgift:** Svarar på HTTP-förfrågningar, loadbalansas automatiskt av Swarm
+
+**Visualizer Service (1 replica)**
+- **Syfte:** Grafisk överblick av Swarm-klustret
+- **Uppgift:** Visar noder, services och container-distribution
+- **Placement:** Körs endast på Manager-noden (placement constraint)
+
+---
+
+## Säkerhetshantering
+
+**Nätverkssäkerhet:**
+- Security Group begränsar SSH till min IP-adress
+- Swarm-kommunikation (portar 2377, 7946, 4789) endast mellan noder
+- HTTP öppen för publik access (port 80, 8080)
+
+**Åtkomstkontroll:**
+- IAM Role för EC2 istället för hårdkodade credentials
+- Principle of least privilege - endast read-only ECR-access
+- SSH-nycklar för säker server-access
+
+**Container-säkerhet:**
+- Privat ECR repository (inte publik Docker Hub)
+- Multi-stage Dockerfile minimerar image-storlek
+- .NET base images från Microsoft (verifierade)
+
+**Data-säkerhet:**
+- Ingen känslig data i containers eller images
+- Secrets kan hanteras via Docker Secrets (ej implementerat i denna demo)
+
+---
+
+## Infrastructure as Code och Automation
+
+### CloudFormation Templates
+
+**sg.yaml - Parametriserad Security Group**
+- Definierar alla nätverksregler
+- Self-reference för Swarm-kommunikation
+- Parametriserad för återanvändbarhet
+
+**ec2.yaml - EC2-instanser med IAM Role**
+- Skapar 3 instanser (1 Manager + 2 Workers)
+- IAM Role för ECR-access inkluderad
+- UserData installerar Docker automatiskt vid start
+
+**Fördelar med IaC:**
+- Reproducerbar infrastruktur
+- Versionskontroll av infrastruktur-kod
+- Enkel att skapa/radera hela miljön
+- Dokumentation genom kod
+
+### Automation
+
+**Bash-skript (docker-stack.sh):**
+- Automatiserar deployment av Docker Stack
+- Skapar docker-stack.yml dynamiskt
+- Deployer och verifierar services automatiskt
+
+**EC2 UserData:**
 ```bash
+#!/bin/bash
+dnf update -y
+dnf install -y docker
+systemctl enable --now docker
+usermod -aG docker ec2-user
+```
+Installerar och konfigurerar Docker automatiskt vid instance-start.
+
+**Dockerfile:**
+Multi-stage build för optimerad image-skapande och minimal runtime-image.
+
+---
+
+## Webbapplikationen
+
+### Test-applikation: .NET MVC
+
+**Beskrivning:** 
+En minimal ASP.NET Core MVC-applikation med standard template.
+
+**Syfte:**
+Verifiera att:
+- Container-bygge fungerar
+- ECR push/pull fungerar
+- Swarm loadbalancing fungerar
+- Services kan nås från internet
+
+**Funktionalitet:**
+- Standard MVC hem-sida
+- Visar att applikationen körs
+- Minimal för att fokusera på infrastruktur
+
+**Varför .NET MVC:**
+- Representerar en verklig webbapplikation
+- Visar att Swarm kan hantera stateful applikationer
+- Containeriseras enkelt med Dockerfile
+
+---
+
+## Implementation - Steg för steg
+
+### 1. Skapa infrastruktur med CloudFormation
+
+Jag började med att skapa resurser manuellt för att förstå strukturen, och använde sedan IaC Generator för att generera CloudFormation templates. Dessa parametriserades för återanvändbarhet.
+
+**Skapade resurser:**
+- Security Group(se bilaga)
+- 3 EC2-instanser med IAM Role(IAM lades till senare)
+
+**Kör skripten:**
+
+```bash
+# Security Group
 aws cloudformation create-stack \
   --stack-name swarm-sg \
   --template-body file://templates/sg.yaml
-```
 
-**EC2-instanser:**
-```bash
+# EC2-instanser
 aws cloudformation create-stack \
   --stack-name swarm-ec2 \
-  --template-body file://templates/ec2.yaml
+  --template-body file://templates/ec2.yaml \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameters ParameterKey=SubnetId,ParameterValue=subnet-058684dd8c601d55d
 ```
 
-### 1.2 Verifiera att resurserna skapats
-
+**Verifiera:**
 ```bash
-# Kolla status för Security Group
 aws cloudformation describe-stacks --stack-name swarm-sg --query 'Stacks[0].StackStatus'
-
-# Kolla status för EC2-instanser
 aws cloudformation describe-stacks --stack-name swarm-ec2 --query 'Stacks[0].StackStatus'
 ```
 
 ---
 
-## 2. Initiera Docker Swarm via SSH
+### 2. Initiera Docker Swarm
 
-Se till att Docker är igång på alla instanser.
+**2.1 Hämta IP-adresser:**
 
-### 2.1 Hämta IP-adresser
-
-I terminalen, kör:
 ```bash
 aws cloudformation describe-stacks --stack-name swarm-ec2 --query 'Stacks[0].Outputs[*].[OutputKey,OutputValue]' --output table
 ```
 
-Detta genererar en lista på alla privata samt publika IP-adresser för dina EC2-instanser, samt sökvägen för din .pem keyfile. Spara ner dem i t.ex. Notepad++.
+Spara Manager och Workers publika/privata IPs.
 
-### 2.2 Anslut till Manager Node
-
-I terminalen, kör:
-```bash
-ssh -i Keyswarm1029.pem ec2-user@54.154.62.190
-```
-
-**Resultat:**
-
-![SSH anslutning till Manager](https://i.imgur.com/JbMyfV5.png)
-
-### 2.3 Initiera Swarm på Manager
-
-Använd den privata IP-adressen för Manager:
+**2.2 Anslut till Manager:**
 
 ```bash
-sudo docker swarm init --advertise-addr 172.31.1.34
+ssh -i Keyswarm1029.pem ec2-user@<manager-public-ip>
 ```
 
-Du kommer att få en lång token om allt går vägen. **Kopiera denna token!**
+![SSH till Manager](https://i.imgur.com/JbMyfV5.png)
+
+**2.3 Initiera Swarm:**
+
+```bash
+sudo docker swarm init --advertise-addr <manager-private-ip>
+```
+
+Kopiera join-token som genereras.
 
 ![Swarm initierad](https://i.imgur.com/Tg1Uipv.png)
 
-### 2.4 Lägg till Worker 1 och Worker 2
+**2.4 Joina Workers:**
 
-**Worker 1:**
-
-Öppna en ny terminal och kör:
 ```bash
-ssh -i Keyswarm1029.pem ec2-user@34.245.181.76
+# Worker 1
+ssh -i Keyswarm1029.pem ec2-user@<worker1-public-ip>
+sudo docker swarm join --token <TOKEN> <manager-private-ip>:2377
+exit
+
+# Worker 2
+ssh -i Keyswarm1029.pem ec2-user@<worker2-public-ip>
+sudo docker swarm join --token <TOKEN> <manager-private-ip>:2377
+exit
 ```
 
-Klistra in join-kommandot med token:
-```bash
-sudo docker swarm join --token SWMTKN-1-303kpn7av16ntcn1r23e7s6nd9b4m99r5cbk08cpjxz60r16jq-6fjqnyfux22mdtjlzd7pnxft5 172.31.1.34:2377
-```
+![Worker ansluten](https://i.imgur.com/yGOhC3U.png)
 
-**Resultat:**
-
-![Worker 1 ansluten](https://i.imgur.com/yGOhC3U.png)
-
-*"This node joined a swarm as worker"*
-
-**Worker 2:**
-
-Upprepa samma steg för Worker 2 med dess publika IP-adress.
-
-### 2.5 Verifiera klustret
-
-Gå tillbaka till terminalen för Manager och verifiera att alla noder är anslutna:
+**2.5 Verifiera kluster:**
 
 ```bash
 sudo docker node ls
 ```
 
-![Swarm-kluster verifierat](https://i.imgur.com/o1GJwid.png)
+![Kluster verifierat](https://i.imgur.com/o1GJwid.png)
 
 ---
 
-## 3. Deploya Docker Stack
+### 3. Deploya test-stack (nginx)
 
-### 3.1 Skapa deployment-skript
+**3.1 Skapa deployment-skript:**
 
-Här har jag valt att automatisera deployment av Docker Stack genom ett bash-skript istället för att köra kommandona manuellt enligt tutorialen.
-
-Jag började med att försöka sätta ihop ett eget skript baserat på tutorialen, men insåg efter ett tag att det inte blev rätt, så bad LLM att hjälpa mig fixa till det.
-
-**Skriptet gör följande:**
-1. Skapar docker-stack.yml automatiskt (definierar services som nginx och visualizer)
-2. Deployer stacken till Docker Swarm
-3. Verifierar deployment genom att visa status för alla services
+Skapade bash-skript som automatiserar deployment. Skriptet skapar docker-stack.yml och deployer automatiskt.
 
 **Komplett skript:** `templates/docker-stack.sh`
 
-### 3.2 Kör deployment-skriptet
+**3.2 Kör deployment:**
 
-På Manager-noden körde jag:
 ```bash
-# Gör skriptet körbart
 chmod +x deploy-swarm.sh
-
-# Kör automatisk deployment
 ./deploy-swarm.sh
 ```
 
-Skriptet skapade docker-stack.yml, deployade den, och visade automatiskt status för alla services.
+**3.3 Resultat:**
 
-### 3.3 Resultat
-
-Stacken "myapp" deployades framgångsrikt med:
-- 3 replicas av nginx (web service)
-- 1 replica av visualizer (på manager-noden)
+Stacken deployades med:
+- 3 nginx replicas (fördelade av Manager över noderna)
+- 1 visualizer replica (placement constraint: endast Manager)
 
 ---
 
-## 4. Testa och skala
+### 4. Testa och skala
 
-### 4.1 Test Web Access
+**4.1 Testa i webbläsare:**
 
-**Nginx (vilken IP som helst):**
+**Nginx:** http://<any-public-ip>/
 
-Öppna i webbläsaren:
-```
-http://54.154.62.190/
-```
+![Nginx](https://i.imgur.com/YUW0S4b.png)
 
-![Nginx välkomstsida](https://i.imgur.com/YUW0S4b.png)
+**Visualizer:** http://<manager-public-ip>:8080/
 
-**Visualizer (Manager public-ip):**
+![Visualizer](https://i.imgur.com/w2OdD0M.png)
 
-Öppna i webbläsaren:
-```
-http://54.154.62.190:8080/
-```
+**4.2 Skala services:**
 
-![Docker Swarm Visualizer](https://i.imgur.com/w2OdD0M.png)
-
-### 4.2 Skala services
-
-**Skala ner till 3 replicas:**
 ```bash
+# Skala upp
+sudo docker service scale myapp_web=5
+
+# Skala ner
 sudo docker service scale myapp_web=3
 ```
 
-![Skalning nedåt](https://i.imgur.com/xzAdBXx.png)
-
-**Skala upp till 5 replicas:**
-```bash
-sudo docker service scale myapp_web=5
-```
-
-![Skalning uppåt](https://i.imgur.com/xzAdBXx.png)
+![Skalning](https://i.imgur.com/xzAdBXx.png)
 
 ---
 
-## 5. Skapa en .NET MVC-app
+### 5. Skapa och containerisera MVC-app
 
-### 5.1 Skapa ett nytt MVC-projekt
+**5.1 Skapa MVC-projekt:**
 
-I terminalen:
 ```bash
-mkdir -p app
-cd app
+mkdir -p app && cd app
 dotnet new mvc -n DsDemoWeb -o DsDemoWeb
 cd DsDemoWeb
 dotnet new gitignore
 ```
 
-![MVC-projekt skapat](https://i.imgur.com/vZzkIbJ.png)
+![MVC skapat](https://i.imgur.com/vZzkIbJ.png)
 
-**Kommentera bort HTTPS-redirection:**
+Kommentera bort HTTPS-redirection i `Program.cs`.
 
-Öppna `Program.cs` och kommentera bort:
-```csharp
-// app.UseHttpsRedirection();
-```
-
-### 5.2 Skapa en Dockerfile
-
-I din app-mapp (DsDemoWeb), skapa en ny fil som heter `Dockerfile` (ingen filändelse), lägg in nedan innehåll och spara:
+**5.2 Skapa Dockerfile:**
 
 ```dockerfile
 # Build & publish
@@ -229,171 +435,167 @@ COPY --from=build /app/publish .
 ENTRYPOINT ["dotnet", "DsDemoWeb.dll"]
 ```
 
-### 5.3 Skapa ett ECR repository
+**5.3 Skapa ECR repository:**
 
-I terminalen, kör:
 ```bash
 AWS_REGION=eu-west-1
 REPO=ds-demo-web
 
-# Skapa repository
-aws ecr describe-repositories --repository-names "$REPO" --region "$AWS_REGION" >/dev/null 2>&1 || \
-  aws ecr create-repository --repository-name "$REPO" --region "$AWS_REGION"
+aws ecr create-repository --repository-name $REPO --region $AWS_REGION
 
-# Hämta repository URI
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 REPO_URI=${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${REPO}
-echo "Repo URI: $REPO_URI"
 ```
 
-### 5.4 Logga in till ECR
+**5.4 Logga in till ECR:**
 
-I terminalen, kör:
 ```bash
-AWS_REGION=eu-west-1
-ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-aws ecr get-login-password --region $AWS_REGION \
-  | docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+aws ecr get-login-password --region eu-west-1 | docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com
 ```
 
-![ECR login lyckades](https://i.imgur.com/OG7XWim.png)
+![ECR login](https://i.imgur.com/OG7XWim.png)
 
 ---
 
-## 6. Bygg och deploya MVC-appen
+### 6. Bygg och deploya MVC-appen
 
-### 6.1 Multi-arkitektur build
+**6.1 Bygg och pusha image:**
 
-Enligt instruktionen skulle imagen byggas för både amd64 och arm64 arkitekturer. Dock stötte jag på ett känt problem med .NET 9 och QEMU-emulering för arm64 som resulterade i exit code 134 (InvalidCastException).
+**Problem:** Multi-arch build (amd64+arm64) misslyckades med .NET 9 och QEMU (exit code 134).
 
-**Lösning:** Eftersom mina EC2-instanser (t3.micro) använder amd64-arkitektur, byggde jag endast för linux/amd64:
+**Lösning:** Byggde endast för amd64 eftersom alla EC2-instanser använder denna arkitektur.
 
 ```bash
-AWS_REGION=eu-west-1
-ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-REPO_URI=${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/ds-demo-web
-IMAGE_TAG=v1
-
-# Bygg och pusha image
 docker buildx build \
   --platform linux/amd64 \
-  -t ${REPO_URI}:${IMAGE_TAG} \
+  -t ${REPO_URI}:v1 \
   -f Dockerfile \
   --push \
   .
 ```
 
-Detta är tillräckligt för projektet då alla noder i Swarm-klustret kör på amd64-processorer.
+![Image pushad](https://i.imgur.com/BxqAOqe.png)
 
-![Docker image pushad till ECR](https://i.imgur.com/BxqAOqe.png)
+**Verifiera i ECR:**
 
-**Verifiera i AWS Console:**
+![ECR repository](https://i.imgur.com/XC9p1OK.png)
 
-Gå till ECR → Repositories → ds-demo-web
+**6.2 Uppdatera deployment-skript:**
 
-![ECR repository med v1 tag](https://i.imgur.com/XC9p1OK.png)
+Bytte ut nginx-imagen mot MVC-app från ECR:
 
-### 6.2 Uppdatera deployment-skript
-
-**Uppdatering från test-app till MVC-app:**
-
-Efter att ha byggt och pushat min .NET MVC-applikation till ECR, uppdaterade jag deployment-skriptet på Manager-noden.
-
-SSH:a in på Manager:
-```bash
-ssh -i Keyswarm1029.pem ec2-user@54.154.62.190
-```
-
-Redigera skriptet:
-```bash
-nano deploy-swarm.sh
-```
-
-**Byt ut:**
-```bash
+```yaml
+# Förut:
 image: nginx:stable-alpine
-```
 
-**Till:**
-```bash
+# Nu:
 image: 542478884453.dkr.ecr.eu-west-1.amazonaws.com/ds-demo-web:v1
 ```
 
-Spara: Ctrl+X, Y, Enter
+**6.3 Åtgärda ECR-access:**
 
-**Gör även ändringen i din lokala .sh-fil** (`templates/docker-stack.sh`) för dokumentation.
-
-### 6.3 IAM Role för ECR-access
-
-**Problem:** EC2-instanserna hade inte behörighet att hämta images från ECR, när jag skulle deploya. 
+**Problem:** EC2-instanserna saknade behörighet att hämta imagen från privat ECR.
 
 **Lösning:**
 
-1. **Skapa IAM Role** (om du inte redan har en):///OBS SKA GÖRAS OM FÖR JAG UPPDATERADE EC2.YAML 
-   - IAM → Roles → Create role
-   - Trusted entity: AWS service → EC2
-   - Policy: `AmazonEC2ContainerRegistryReadOnly`
-   - Role name: `EC2-ECR-Access`
-   - Create role
-
-2. **Tilldela rollen till EC2-instanserna:**
-   - EC2 → Instances → Markera alla 3 instanser
-   - **OBS:** Instanserna måste stoppas först
-   - Instance state → Stop instance (vänta tills stopped)
-   - Actions → Security → Modify IAM role
-   - Välj: `EC2-ECR-Access`
-   - Update IAM role
-   - Instance state → Start instance
-
-### 6.4 Deploya MVC-appen
-
-På Manager-noden, kör:
+1. **Raderade gamla EC2-stacken:**
 ```bash
+aws cloudformation delete-stack --stack-name swarm-ec2
+aws cloudformation wait stack-delete-complete --stack-name swarm-ec2
+```
+
+2. **Uppdaterade ec2.yaml** med IAM Role (`EC2-ECR-Access`) och Instance Profile
+
+3. **Skapade ny stack med IAM:**
+```bash
+aws cloudformation create-stack \
+  --stack-name swarm-ec2 \
+  --template-body file://templates/ec2.yaml \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameters ParameterKey=SubnetId,ParameterValue=subnet-058684dd8c601d55d
+```
+
+4. **Återskapade Swarm-klustret** (steg 2.2-2.5)
+
+5. **Autentiserade Docker på alla noder** (IAM-rollen propagerade inte direkt):
+
+```bash
+# På alla 3 noder:
+aws ecr get-login-password --region eu-west-1 | sudo docker login --username AWS --password-stdin 542478884453.dkr.ecr.eu-west-1.amazonaws.com
+```
+
+**6.4 Deploya MVC-appen:**
+
+```bash
+# Kopiera uppdaterat skript
+scp -i Keyswarm1029.pem templates/docker-stack.sh ec2-user@<manager-ip>:~/deploy-swarm.sh
+
+# SSH och kör
+ssh -i Keyswarm1029.pem ec2-user@<manager-ip>
+chmod +x deploy-swarm.sh
 ./deploy-swarm.sh
 ```
 
-**Detta gör:**
-- Skapar docker-stack.yml med MVC-appen
-- Deployer till Swarm
-- Visar status för alla services
-
-**Verifiera deployment:**
+**Verifiera:**
 ```bash
 sudo docker service ps myapp_web
+sudo docker service logs myapp_web --tail 20
 ```
 
-**Öppna i webbläsaren:**
-```
-http://54.154.62.190/
-```
+**Testa i webbläsare:**
+- http://<manager-public-ip>/ (MVC-app)
+- http://<manager-public-ip>:8080/ (Visualizer)
 
-Din MVC-app körs nu på Swarm med 3 replicas! 🎉
+**Resultat:** MVC-appen körs med 3 replicas, koordinerade av Manager över alla noder! 🎉
 
 ---
 
-## Bilaga: Att använda IaC Generator (*1)
+## Sammanfattning
 
-Som jag nämnde tidigare har jag använt mig av CloudFormation för att skapa vissa av resurserna. Nedan följer ett exempel på hur man använder IaC generator. Principen är densamma från det att resursen man vill använda till templaten är klar.
+### Vad som skapats
 
-### Börja med att skapa en Security Group manuellt
+En komplett, skalbar Docker Swarm-miljö på AWS med:
+- Infrastructure as Code (CloudFormation)
+- Automatiserad deployment (Bash-skript)
+- Säker ECR-integration (IAM)
+- Containeriserad .NET MVC-applikation
+- 3 replicas för hög tillgänglighet
+- Orchestrering där Manager koordinerar container-placering
 
-#### 1. Skapa Security Group
+### Lärdomar
 
-Namnge SG samt ange beskrivning.
+- **IaC är kraftfullt:** Hela miljön kan återskapas på minuter
+- **IAM är kritiskt:** Behörigheter måste vara på plats för privata registries
+- **Swarm är enkelt:** Mindre komplext än Kubernetes för små/medium setups
+- **Orchestrering ger kontroll:** Manager's koordinering säkerställer optimal fördelning
+- **Multi-stage builds:** Minskar image-storlek betydligt
+
+---
+
+## Bilaga: Att använda IaC Generator
+
+Som jag nämnde tidigare har jag använt CloudFormation för att skapa vissa resurser. Nedan följer ett exempel på hur man använder IaC Generator. Principen är densamma från det att resursen man vill använda till templaten är klar.
+
+---
+
+### Steg 1: Skapa Security Group manuellt
+
+#### 1.1 Grundinställningar
+
+Namnge Security Group och ange beskrivning.
 
 **Inbound rules:**
+
+![Inbound rules setup](https://i.imgur.com/bi27vCg.png)
 
 - **VPC:** Default
 - **SSH:** Port 22 (rekommenderas att använda Your IP address)
 - **HTTP:** Port 80, Source: 0.0.0.0/0
 - **Custom TCP (Visualizer):** Port 8080, Source: 0.0.0.0/0
 
-![Inbound rules](https://i.imgur.com/bi27vCg.png)
-
 **Outbound rules:**
 
-- All traffic
-- Destination: 0.0.0.0/0
+- All traffic, Destination: 0.0.0.0/0
 
 Lägg till tags om så önskas.
 
@@ -405,73 +607,91 @@ Då ska det se ut så här:
 
 ![Security Group översikt](https://i.imgur.com/0o40PxR.png)
 
-#### 2. Self-reference för Swarm-kommunikation
+#### 1.2 Self-reference för Swarm-kommunikation
 
-Gå in på **Edit inbound rules**, för nu ska vi referera SG till sig själv.
+Gå in på **Edit inbound rules**. Nu ska vi referera SG till sig själv för intern Swarm-kommunikation.
 
 Lägg till följande regler som alla refererar till samma Security Group:
 - **Swarm Management:** Port 2377 (TCP)
 - **Swarm Communication:** Port 7946 (TCP & UDP)
 - **Overlay Network:** Port 4789 (UDP)
 
-![Self-reference rules](https://i.imgur.com/GX7oGeQ.png)
-
 **Spara**
 
-Skriv gärna ner Resource identifier, det behövs till IaC Generator.
+![Self-reference rules](https://i.imgur.com/GX7oGeQ.png)
 
-### IaC Generator
+**Tips:** Skriv ner Resource identifier - den behövs till IaC Generator.
 
-Nu ska vi skapa själva templaten för CloudFormation.
+---
 
-#### 1. Navigera till CloudFormation → IaC generator
+### Steg 2: Skapa CloudFormation template med IaC Generator
+
+#### 2.1 Navigera till IaC Generator
+
+Gå till **CloudFormation → IaC Generator**
 
 ![IaC Generator](https://i.imgur.com/Cx2TBf8.png)
 
-#### 2. Starta scan
+#### 2.2 Starta scan
 
-Starta en new scan och välj **Scan specific resource**
+Starta en **new scan** och välj **Scan specific resource**
 
 ![Scan specific resource](https://i.imgur.com/LDXsTcD.png)
 
-#### 3. Välj Security Group
+#### 2.3 Välj Security Group
 
-Sök efter SG, bocka i din Security Group och **Start scan**
+Sök efter SG, bocka i din Security Group och klicka **Start scan**
 
 ![Start scan](https://i.imgur.com/zvp2M2x.png)
 
-#### 4. Skapa template
+#### 2.4 Skapa template
 
 När scan är klar, klicka **Create template**
 
 ![Create template](https://i.imgur.com/rZDKYDn.png)
 
-#### 5. Namnge template
+#### 2.5 Namnge template
 
 Namnge templaten och välj **Next**
 
 ![Namnge template](https://i.imgur.com/7nH0pFj.png)
 
-#### 6. Välj rätt resource
+#### 2.6 Välj rätt resource
 
-Nu får du upp alla SG du har skapat. Se till att välja rätt Resource identifier.
+Nu får du upp alla SG du har skapat. Se till att välja rätt **Resource identifier**.
 
 ![Välj resource](https://i.imgur.com/ldG4CtS.png)
 
 Tryck **Next** på kommande två fönster.
 
-#### 7. Skapa template
+#### 2.7 Slutför
 
-**Create Template**
+Klicka **Create Template**
 
 ![Template skapad](https://i.imgur.com/D12hKdO.png)
 
+---
+
+### Steg 3: Parametrisera och spara
+
 Nu har templaten skapats med ett långt skript.
 
-**Tips:** Parametrisera skriptet. Det kan vara knepigt i början, så då kan man be LLM om hjälp.
+**Tips:** Parametrisera skriptet för återanvändbarhet. Det kan vara knepigt i början, så då kan man be LLM om hjälp.
 
-Välj att spara ner skriptet, så kan du använda det flera gånger som det är eller med ändringar.
+Välj att spara ner skriptet - då kan du använda det flera gånger som det är eller med ändringar.
 
 ![Spara template](https://i.imgur.com/bi27vCg.png)
 
-**OBS!** Se till att radera stacken under CloudFormation samt SG innan du kör skriptet, eller uppdatera templaten med andra namn.
+**OBS!** Se till att radera stacken under CloudFormation samt SG innan du kör skriptet, eller uppdatera templaten med andra namn för att undvika konflikter.
+
+---
+
+### Sammanfattning av IaC Generator-processen
+
+1. ✅ Skapa resurs manuellt i AWS Console
+2. ✅ Använd IaC Generator för att scanna resursen
+3. ✅ Generera CloudFormation template
+4. ✅ Parametrisera templaten
+5. ✅ Spara och återanvänd för framtida deployments
+
+**Fördel:** Får korrekt CloudFormation-syntax direkt från befintlig resurs, vilket minskar risken för fel och sparar tid.
