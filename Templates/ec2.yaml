@@ -1,0 +1,244 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Docker Swarm Cluster - 1 Manager + 2 Workers'
+
+Parameters:
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Name of an existing EC2 KeyPair to enable SSH access
+    Default: Keyswarm1029
+  
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC ID
+    Default: vpc-0b6849c800e4a6ff1
+  
+  SecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: Security Group ID (SwarmSG)
+    Default: sg-0c251c2eff8801d7a
+  
+  ImageId:
+    Type: AWS::EC2::Image::Id
+    Description: Amazon Linux 2023 AMI ID
+    Default: ami-0f9fa7cd5a3697470
+  
+  InstanceType:
+    Type: String
+    Description: EC2 instance type
+    Default: t3.micro
+    AllowedValues:
+      - t3.micro
+      - t3.small
+      - t3.medium
+  
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Subnet where instances will be launched
+    # You need to provide your subnet ID here
+
+Metadata:
+  AWSToolsMetrics:
+    IaC_Generator: "arn:aws:cloudformation:eu-west-1:542478884453:generatedTemplate/232a8b92-816c-42b9-bb62-3e90110dae5f"
+
+Resources:
+  # IAM ROLE FÖR ECR ACCESS
+  EC2ECRRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: EC2-ECR-Access
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+      Tags:
+        - Key: Name
+          Value: EC2-ECR-Access
+  
+  # INSTANCE PROFILE (krävs för att tilldela role till EC2)
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: EC2-ECR-Profile
+      Roles:
+        - !Ref EC2ECRRole
+
+  # MANAGER NODE
+  SwarmManager:
+    Type: AWS::EC2::Instance
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref ImageId
+      KeyName: !Ref KeyName
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      SecurityGroupIds:
+        - !Ref SecurityGroupId
+      SubnetId: !Ref SubnetId
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          dnf update -y
+          dnf install -y docker
+          systemctl enable --now docker
+          usermod -aG docker ec2-user
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeType: gp3
+            VolumeSize: 8
+            Iops: 3000
+            DeleteOnTermination: true
+            Encrypted: false
+      Monitoring: false
+      EbsOptimized: true
+      CreditSpecification:
+        CPUCredits: unlimited
+      Tags:
+        - Key: Name
+          Value: swarm-manager
+        - Key: Role
+          Value: Manager
+        - Key: Cluster
+          Value: DockerSwarm
+
+  # WORKER 1
+  SwarmWorker1:
+    Type: AWS::EC2::Instance
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref ImageId
+      KeyName: !Ref KeyName
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      SecurityGroupIds:
+        - !Ref SecurityGroupId
+      SubnetId: !Ref SubnetId
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          dnf update -y
+          dnf install -y docker
+          systemctl enable --now docker
+          usermod -aG docker ec2-user
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeType: gp3
+            VolumeSize: 8
+            Iops: 3000
+            DeleteOnTermination: true
+            Encrypted: false
+      Monitoring: false
+      EbsOptimized: true
+      CreditSpecification:
+        CPUCredits: unlimited
+      Tags:
+        - Key: Name
+          Value: swarm-worker-1
+        - Key: Role
+          Value: Worker
+        - Key: Cluster
+          Value: DockerSwarm
+
+  # WORKER 2
+  SwarmWorker2:
+    Type: AWS::EC2::Instance
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref ImageId
+      KeyName: !Ref KeyName
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      SecurityGroupIds:
+        - !Ref SecurityGroupId
+      SubnetId: !Ref SubnetId
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          dnf update -y
+          dnf install -y docker
+          systemctl enable --now docker
+          usermod -aG docker ec2-user
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeType: gp3
+            VolumeSize: 8
+            Iops: 3000
+            DeleteOnTermination: true
+            Encrypted: false
+      Monitoring: false
+      EbsOptimized: true
+      CreditSpecification:
+        CPUCredits: unlimited
+      Tags:
+        - Key: Name
+          Value: swarm-worker-2
+        - Key: Role
+          Value: Worker
+        - Key: Cluster
+          Value: DockerSwarm
+
+Outputs:
+  ManagerInstanceId:
+    Description: Instance ID of Swarm Manager
+    Value: !Ref SwarmManager
+    Export:
+      Name: !Sub '${AWS::StackName}-ManagerId'
+  
+  ManagerPublicIP:
+    Description: Public IP of Swarm Manager
+    Value: !GetAtt SwarmManager.PublicIp
+    Export:
+      Name: !Sub '${AWS::StackName}-ManagerPublicIP'
+  
+  ManagerPrivateIP:
+    Description: Private IP of Swarm Manager
+    Value: !GetAtt SwarmManager.PrivateIp
+    Export:
+      Name: !Sub '${AWS::StackName}-ManagerPrivateIP'
+  
+  Worker1InstanceId:
+    Description: Instance ID of Worker 1
+    Value: !Ref SwarmWorker1
+    Export:
+      Name: !Sub '${AWS::StackName}-Worker1Id'
+  
+  Worker1PublicIP:
+    Description: Public IP of Worker 1
+    Value: !GetAtt SwarmWorker1.PublicIp
+    Export:
+      Name: !Sub '${AWS::StackName}-Worker1PublicIP'
+  
+  Worker1PrivateIP:
+    Description: Private IP of Worker 1
+    Value: !GetAtt SwarmWorker1.PrivateIp
+    Export:
+      Name: !Sub '${AWS::StackName}-Worker1PrivateIP'
+  
+  Worker2InstanceId:
+    Description: Instance ID of Worker 2
+    Value: !Ref SwarmWorker2
+    Export:
+      Name: !Sub '${AWS::StackName}-Worker2Id'
+  
+  Worker2PublicIP:
+    Description: Public IP of Worker 2
+    Value: !GetAtt SwarmWorker2.PublicIp
+    Export:
+      Name: !Sub '${AWS::StackName}-Worker2PublicIP'
+  
+  Worker2PrivateIP:
+    Description: Private IP of Worker 2
+    Value: !GetAtt SwarmWorker2.PrivateIp
+    Export:
+      Name: !Sub '${AWS::StackName}-Worker2PrivateIP'

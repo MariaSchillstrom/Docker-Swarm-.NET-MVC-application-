@@ -1,0 +1,168 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Parametriserad Security Group för Docker Swarm med self-reference'
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC där Security Group ska skapas
+    Default: vpc-0b6849c800e4a6ff1
+  
+  SecurityGroupName:
+    Type: String
+    Description: Namn på Security Group
+    Default: SwarmSG
+  
+  SSHAllowedCIDR:
+    Type: String
+    Description: CIDR block som får SSH-access
+    Default: 91.128.144.160/32
+    AllowedPattern: '^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$'
+  
+  HTTPAllowedCIDR:
+    Type: String
+    Description: CIDR block som får HTTP-access
+    Default: 0.0.0.0/0
+    AllowedPattern: '^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$'
+  
+  SwarmManagementPort:
+    Type: Number
+    Description: Port för Swarm management
+    Default: 2377
+    MinValue: 1
+    MaxValue: 65535
+  
+  SwarmCommunicationPort:
+    Type: Number
+    Description: Port för Swarm node communication
+    Default: 7946
+    MinValue: 1
+    MaxValue: 65535
+  
+  SwarmOverlayPort:
+    Type: Number
+    Description: Port för Swarm overlay network
+    Default: 4789
+    MinValue: 1
+    MaxValue: 65535
+  
+  HTTPPort:
+    Type: Number
+    Description: HTTP port
+    Default: 80
+    MinValue: 1
+    MaxValue: 65535
+  
+  SSHPort:
+    Type: Number
+    Description: SSH port
+    Default: 22
+    MinValue: 1
+    MaxValue: 65535
+  
+  VisualizerPort:
+    Type: Number
+    Description: Port för Docker Visualizer
+    Default: 8080
+    MinValue: 1
+    MaxValue: 65535
+
+Metadata:
+  AWSToolsMetrics:
+    IaC_Generator: "arn:aws:cloudformation:eu-west-1:542478884453:generatedTemplate/424fb661-c241-429b-9080-ca4602c50e10"
+
+Resources:
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      GroupName: !Ref SecurityGroupName
+      GroupDescription: !Sub 'Security group for Docker Swarm - ${SecurityGroupName}'
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        # HTTP Access
+        - IpProtocol: tcp
+          Description: HTTP Access
+          FromPort: !Ref HTTPPort
+          ToPort: !Ref HTTPPort
+          CidrIp: !Ref HTTPAllowedCIDR
+        
+        # SSH Access
+        - IpProtocol: tcp
+          Description: SSH Access
+          FromPort: !Ref SSHPort
+          ToPort: !Ref SSHPort
+          CidrIp: !Ref SSHAllowedCIDR
+        
+        # Visualizer Access
+        - IpProtocol: tcp
+          Description: Docker Visualizer Access
+          FromPort: !Ref VisualizerPort
+          ToPort: !Ref VisualizerPort
+          CidrIp: !Ref HTTPAllowedCIDR
+      
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          Description: Allow all outbound traffic
+          CidrIp: 0.0.0.0/0
+      
+      Tags:
+        - Key: Name
+          Value: !Ref SecurityGroupName
+        - Key: Purpose
+          Value: Docker Swarm
+  
+  # Self-referencing ingress rules (skapas EFTER Security Group)
+  SwarmManagementIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref EC2SecurityGroup
+      IpProtocol: tcp
+      Description: Swarm Management Communication
+      FromPort: !Ref SwarmManagementPort
+      ToPort: !Ref SwarmManagementPort
+      SourceSecurityGroupId: !Ref EC2SecurityGroup
+  
+  SwarmCommunicationTCPIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref EC2SecurityGroup
+      IpProtocol: tcp
+      Description: Swarm Node Communication (TCP)
+      FromPort: !Ref SwarmCommunicationPort
+      ToPort: !Ref SwarmCommunicationPort
+      SourceSecurityGroupId: !Ref EC2SecurityGroup
+  
+  SwarmCommunicationUDPIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref EC2SecurityGroup
+      IpProtocol: udp
+      Description: Swarm Node Communication (UDP)
+      FromPort: !Ref SwarmCommunicationPort
+      ToPort: !Ref SwarmCommunicationPort
+      SourceSecurityGroupId: !Ref EC2SecurityGroup
+  
+  SwarmOverlayIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref EC2SecurityGroup
+      IpProtocol: udp
+      Description: Swarm Overlay Network Traffic
+      FromPort: !Ref SwarmOverlayPort
+      ToPort: !Ref SwarmOverlayPort
+      SourceSecurityGroupId: !Ref EC2SecurityGroup
+
+Outputs:
+  SecurityGroupId:
+    Description: ID för den skapade Security Group
+    Value: !Ref EC2SecurityGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-SecurityGroupId'
+  
+  SecurityGroupName:
+    Description: Namn på Security Group
+    Value: !Ref SecurityGroupName
+    Export:
+      Name: !Sub '${AWS::StackName}-SecurityGroupName'
