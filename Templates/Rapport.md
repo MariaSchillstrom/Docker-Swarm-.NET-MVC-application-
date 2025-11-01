@@ -1,33 +1,19 @@
-Kurs; Skalbara molnapplikationer
-Inlämning; 2 Del 1
-Namn;Maria Schillström
-Datum; 20205-11-01
 
-https://github.com/MariaSchillstrom/Docker-Swarm-.NET-MVC-application-.git
+Kurs: Skalbara molnapplikationer  
+Inlämning: 2 Del 1  
+Namn: Maria Schillström  
+Datum: 2025-11-01  
+Git: https://github.com/MariaSchillstrom/Docker-Swarm-.NET-MVC-application-.git
 
+<br>
 
-
-
-
-
+## Innehållsförteckning
 
 
 
 
 
-
-
-
-
-
-
-
-Innehållsförteckning
-
-
-
-
-
+- [Innehållsförteckning](#innehållsförteckning)
 - [Översikt av lösningen](#översikt-av-lösningen)
   - [Arkitektur](#arkitektur)
   - [Hur det fungerar](#hur-det-fungerar)
@@ -44,10 +30,28 @@ Innehållsförteckning
 - [Implementation - Steg för steg](#implementation---steg-för-steg)
   - [1. Skapa infrastruktur med CloudFormation](#1-skapa-infrastruktur-med-cloudformation)
   - [2. Initiera Docker Swarm](#2-initiera-docker-swarm)
+    - [2.1 Hämta IP-adresser](#21-hämta-ip-adresser)
+    - [2.2 Anslut till Manager](#22-anslut-till-manager)
+    - [2.3 Initiera Swarm](#23-initiera-swarm)
+    - [2.4 Joina Workers](#24-joina-workers)
+    - [2.5 Verifiera kluster](#25-verifiera-kluster)
   - [3. Deploya test-stack (nginx)](#3-deploya-test-stack-nginx)
+    - [3.1 Skapa deployment-skript](#31-skapa-deployment-skript)
+    - [3.2 Kör deployment](#32-kör-deployment)
+    - [3.3 Resultat](#33-resultat)
   - [4. Testa och skala](#4-testa-och-skala)
+    - [4.1 Testa i webbläsare](#41-testa-i-webbläsare)
+    - [4.2 Skala services](#42-skala-services)
   - [5. Skapa och containerisera MVC-app](#5-skapa-och-containerisera-mvc-app)
+    - [5.1 Skapa MVC-projekt](#51-skapa-mvc-projekt)
+    - [5.2 Skapa Dockerfile](#52-skapa-dockerfile)
+    - [5.3 Skapa ECR repository](#53-skapa-ecr-repository)
+    - [5.4 Logga in till ECR](#54-logga-in-till-ecr)
   - [6. Bygg och deploya MVC-appen](#6-bygg-och-deploya-mvc-appen)
+    - [6.1 Bygg och pusha image](#61-bygg-och-pusha-image)
+    - [6.2 Uppdatera deployment-skript](#62-uppdatera-deployment-skript)
+    - [6.3 Åtgärda ECR-access](#63-åtgärda-ecr-access)
+    - [6.4 Deploya MVC-appen](#64-deploya-mvc-appen)
 - [Sammanfattning](#sammanfattning)
   - [Vad som skapats](#vad-som-skapats)
   - [Lärdomar](#lärdomar)
@@ -65,9 +69,6 @@ Innehållsförteckning
     - [2.7 Slutför](#27-slutför)
   - [Steg 3: Parametrisera och spara](#steg-3-parametrisera-och-spara)
   - [Sammanfattning av IaC Generator-processen](#sammanfattning-av-iac-generator-processen)
-
-
-
 
 
 
@@ -103,8 +104,6 @@ Jag har skapat en skalbar containerbaserad värdmiljö för en .NET MVC-webbappl
 - Lagrad i privat ECR (Elastic Container Registry)
 - Deployad med 3 replicas för redundans
 - Visualizer för grafisk överblick av klustret (körs endast på Manager)
-
-<div style="page-break-after: always;"></div>
 
 ### Hur det fungerar
 
@@ -310,7 +309,7 @@ aws cloudformation describe-stacks --stack-name swarm-ec2 --query 'Stacks[0].Sta
 
 ### 2. Initiera Docker Swarm
 
-**2.1 Hämta IP-adresser:**
+#### 2.1 Hämta IP-adresser
 
 ```bash
 aws cloudformation describe-stacks --stack-name swarm-ec2 --query 'Stacks[0].Outputs[*].[OutputKey,OutputValue]' --output table
@@ -318,7 +317,7 @@ aws cloudformation describe-stacks --stack-name swarm-ec2 --query 'Stacks[0].Out
 
 Spara Manager och Workers publika/privata IPs.
 
-**2.2 Anslut till Manager:**
+#### 2.2 Anslut till Manager
 
 ```bash
 ssh -i Keyswarm1029.pem ec2-user@<manager-public-ip>
@@ -326,7 +325,7 @@ ssh -i Keyswarm1029.pem ec2-user@<manager-public-ip>
 
 ![SSH till Manager](https://i.imgur.com/JbMyfV5.png)
 
-**2.3 Initiera Swarm:**
+#### 2.3 Initiera Swarm
 
 ```bash
 sudo docker swarm init --advertise-addr <manager-private-ip>
@@ -336,7 +335,7 @@ Kopiera join-token som genereras.
 
 ![Swarm initierad](https://i.imgur.com/Tg1Uipv.png)
 
-**2.4 Joina Workers:**
+#### 2.4 Joina Workers
 
 ```bash
 # Worker 1
@@ -352,7 +351,7 @@ exit
 
 ![Worker ansluten](https://i.imgur.com/yGOhC3U.png)
 
-**2.5 Verifiera kluster:**
+#### 2.5 Verifiera kluster
 
 ```bash
 sudo docker node ls
@@ -364,20 +363,20 @@ sudo docker node ls
 
 ### 3. Deploya test-stack (nginx)
 
-**3.1 Skapa deployment-skript:**
+#### 3.1 Skapa deployment-skript
 
 Skapade bash-skript som automatiserar deployment. Skriptet skapar docker-stack.yml och deployer automatiskt.
 
 **Komplett skript:** `templates/docker-stack.sh`
 
-**3.2 Kör deployment:**
+#### 3.2 Kör deployment
 
 ```bash
 chmod +x deploy-swarm.sh
 ./deploy-swarm.sh
 ```
 
-**3.3 Resultat:**
+#### 3.3 Resultat
 
 Stacken deployades med:
 - 3 nginx replicas (fördelade av Manager över noderna)
@@ -385,7 +384,7 @@ Stacken deployades med:
 
 ### 4. Testa och skala
 
-**4.1 Testa i webbläsare:**
+#### 4.1 Testa i webbläsare
 
 **Nginx:** http://<any-public-ip>/
 
@@ -395,13 +394,11 @@ Stacken deployades med:
 
 ![Visualizer](https://i.imgur.com/w2OdD0M.png)
 
-**4.2 Skala services:**
+#### 4.2 Skala services
 
 ```bash
 # Skala upp
 sudo docker service scale myapp_web=5
-
-https://i.imgur.com/2SakNzX.png
 
 # Skala ner
 sudo docker service scale myapp_web=3
@@ -413,7 +410,7 @@ sudo docker service scale myapp_web=3
 
 ### 5. Skapa och containerisera MVC-app
 
-**5.1 Skapa MVC-projekt:**
+#### 5.1 Skapa MVC-projekt
 
 ```bash
 mkdir -p app && cd app
@@ -426,7 +423,7 @@ dotnet new gitignore
 
 Kommentera bort HTTPS-redirection i `Program.cs`.
 
-**5.2 Skapa Dockerfile:**
+#### 5.2 Skapa Dockerfile
 
 ```dockerfile
 # Build & publish
@@ -446,7 +443,7 @@ COPY --from=build /app/publish .
 ENTRYPOINT ["dotnet", "DsDemoWeb.dll"]
 ```
 
-**5.3 Skapa ECR repository:**
+#### 5.3 Skapa ECR repository
 
 ```bash
 AWS_REGION=eu-west-1
@@ -458,7 +455,7 @@ ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 REPO_URI=${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${REPO}
 ```
 
-**5.4 Logga in till ECR:**
+#### 5.4 Logga in till ECR
 
 ```bash
 aws ecr get-login-password --region eu-west-1 | docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com
@@ -470,7 +467,7 @@ aws ecr get-login-password --region eu-west-1 | docker login --username AWS --pa
 
 ### 6. Bygg och deploya MVC-appen
 
-**6.1 Bygg och pusha image:**
+#### 6.1 Bygg och pusha image
 
 **Problem:** Multi-arch build (amd64+arm64) misslyckades med .NET 9 och QEMU (exit code 134).
 
@@ -491,7 +488,7 @@ docker buildx build \
 
 ![ECR repository](https://i.imgur.com/XC9p1OK.png)
 
-**6.2 Uppdatera deployment-skript:**
+#### 6.2 Uppdatera deployment-skript
 
 Bytte ut nginx-imagen mot MVC-app från ECR:
 
@@ -503,7 +500,7 @@ image: nginx:stable-alpine
 image: 542478884453.dkr.ecr.eu-west-1.amazonaws.com/ds-demo-web:v1
 ```
 
-**6.3 Åtgärda ECR-access:**
+#### 6.3 Åtgärda ECR-access
 
 **Problem:** EC2-instanserna saknade behörighet att hämta imagen från privat ECR.
 
@@ -535,7 +532,7 @@ aws cloudformation create-stack \
 aws ecr get-login-password --region eu-west-1 | sudo docker login --username AWS --password-stdin 542478884453.dkr.ecr.eu-west-1.amazonaws.com
 ```
 
-**6.4 Deploya MVC-appen:**
+#### 6.4 Deploya MVC-appen
 
 ```bash
 # Kopiera uppdaterat skript
