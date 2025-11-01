@@ -1,8 +1,11 @@
-Kurs; 
-Inlämning;
-Namn;
-Datum;
-Git; 
+Kurs; Skalbara molnapplikationer
+Inlämning; 2 Del 1
+Namn;Maria Schillström
+Datum; 20205-11-01
+
+https://github.com/MariaSchillstrom/Docker-Swarm-.NET-MVC-application-.git
+
+
 
 
 
