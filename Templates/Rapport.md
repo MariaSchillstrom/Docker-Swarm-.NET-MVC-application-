@@ -86,9 +86,9 @@ Git: https://github.com/MariaSchillstrom/Docker-Swarm-.NET-MVC-application-.git
 
 ### Arkitektur
 
-**Note:** Denna tutorial följer inte ett production-ready arbetsflöde där applikationen normalt utvecklas och testas färdigt innan infrastrukturen sätts upp. I produktion skulle antingen (1) en färdig MVC-applikation finnas innan Swarm-konfigurationen, eller (2) frontend och backend separeras där frontend hostas på t.ex. AWS S3 för att möjliggöra snabba uppdateringar utan container-rebuilds. Det sistnämnda alternativet behandlas i en separat rapport. 
+**Note:** Denna tutorial följer inte ett production-ready arbetsflöde där applikationen normalt utvecklas och testas färdigt innan infrastrukturen sätts upp. I produktion skulle antingen (1) en färdig MVC-applikation finnas innan Swarm-konfigurationen, eller (2) frontend och backend separeras där frontend hostas på t.ex. AWS S3 för att möjliggöra snabba uppdateringar utan container-rebuilds. 
 
-För denna labb antar vi att en färdig applikation finns tillgänglig.
+För denna labb antar vi att du bygger klart hela MVC-applikationen innan steget för Deploy.
 
 **Implementerad lösning:**
 Jag har skapat en skalbar containerbaserad värdmiljö för en .NET MVC-webbapplikation med följande komponenter:
