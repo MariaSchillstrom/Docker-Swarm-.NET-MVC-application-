@@ -29,15 +29,6 @@ Git: https://github.com/MariaSchillstrom/Docker-Swarm-.NET-MVC-application-.git
   - [Test-applikation: .NET MVC](#test-applikation-net-mvc)
 
 
-
-
-
-
-
-
-
-
-
 <div style="page-break-after: always;"></div>
 
 ## Översikt av lösningen
