@@ -53,6 +53,10 @@ Jag har skapat en skalbar containerbaserad värdmiljö för en .NET MVC-webbappl
 - Lagrad i privat ECR (Elastic Container Registry)
 - Deployad med 3 replicas för redundans
 - Visualizer för grafisk överblick av klustret (körs endast på Manager)
+  
+
+<div style="page-break-before: always;"></div>
+
 
 ### Hur det fungerar
 
@@ -156,7 +160,6 @@ Jag har skapat en skalbar containerbaserad värdmiljö för en .NET MVC-webbappl
 - Ingen känslig data i containers eller images
 - Secrets kan hanteras via Docker Secrets (ej implementerat i denna demo)
 
-<div style="page-break-after: always;"></div>
 
 ## Infrastructure as Code och Automation
 
@@ -184,6 +187,10 @@ Jag har skapat en skalbar containerbaserad värdmiljö för en .NET MVC-webbappl
 - Automatiserar deployment av Docker Stack
 - Skapar docker-stack.yml dynamiskt
 - Deployer och verifierar services automatiskt
+  
+
+<div style="page-break-before: always;"></div>
+
 
 **EC2 UserData:**
 ```bash
@@ -194,6 +201,10 @@ systemctl enable --now docker
 usermod -aG docker ec2-user
 ```
 Installerar och konfigurerar Docker automatiskt vid instance-start.
+
+
+<div style="page-break-before: always;"></div>
+
 
 **Dockerfile:**
 Multi-stage build för optimerad image-skapande och minimal runtime-image.
